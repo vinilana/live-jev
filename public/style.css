@@ -22,6 +22,7 @@ canvas { width: 100%; height: auto; border-radius: 12px; box-shadow: 0 10px 40px
 .statsTable td:first-child, .statsTable th:first-child { text-align: left; color: var(--muted); }
 .statsTable th { font-weight: 700; } .statsTable th small { display: block; font-weight: 400; color: var(--muted); font-size: 10px; }
 .statsTable th.jev { color: var(--ok); } .statsTable th.llm { color: #79b8ff; }
+.totals { background: #0f1216; border: 1px dashed var(--line); border-radius: 8px; padding: 6px 8px; margin-top: 4px; line-height: 1.5; }
 .good { color: var(--ok); } .bad { color: var(--err); }
 .tabs { display: flex; gap: 6px; flex-wrap: wrap; }
 .tab { font-size: 12px; padding: 4px 10px; }

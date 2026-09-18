@@ -21,6 +21,12 @@ const PRICING = {
 };
 const costOf = (kind, inTok, outTok) => (inTok * PRICING[kind].input + outTok * PRICING[kind].output) / 1e6;
 
+// Running totals since the server started, to reconcile with the providers' consoles.
+const TOTALS = { since: new Date().toISOString(), jev: { calls: 0, input_tokens: 0, output_tokens: 0, cost: 0 }, llm: { calls: 0, input_tokens: 0, output_tokens: 0, cost: 0 } };
+function tally(kind, usage, cost) {
+  const t = TOTALS[kind]; t.calls++; t.input_tokens += usage?.input_tokens || 0; t.output_tokens += usage?.output_tokens || 0; t.cost += cost || 0;
+}
+
 let client = null;
 if (process.env.TYPESAFE_API_KEY) {
   client = new TypeSafeClient({
@@ -176,6 +182,7 @@ async function handleApi(req, res, url) {
       llm: llmEnabled,
       llmModel: llmEnabled ? LLM_MODEL : null,
       pricing: PRICING,
+      totals: TOTALS,
     });
   }
   if (req.method === "POST" && url.pathname === "/api/llm-decide") {
@@ -186,6 +193,7 @@ async function handleApi(req, res, url) {
     const t0 = performance.now();
     try {
       const r = await llmDecide(body.state ?? null, body.questions);
+      tally("llm", r.usage, r.cost);
       return sendJson(res, 200, { ...r, latencyMs: Math.round(performance.now() - t0) });
     } catch (err) {
       console.error(`[llm] ${err.name}: ${err.message}`);
@@ -201,11 +209,13 @@ async function handleApi(req, res, url) {
     const t0 = performance.now();
     try {
       const result = await client.systemOne({ state: body.state ?? null, questions: body.questions });
+      const cost = costOf("jev", result.usage?.input_tokens || 0, result.usage?.output_tokens || 0);
+      tally("jev", result.usage, cost);
       return sendJson(res, 200, {
         answers: result.answers,
         model: result.model,
         usage: result.usage,
-        cost: costOf("jev", result.usage?.input_tokens || 0, result.usage?.output_tokens || 0),
+        cost,
         latencyMs: Math.round(performance.now() - t0),
       });
     } catch (err) {

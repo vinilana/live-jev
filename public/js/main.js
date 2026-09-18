@@ -137,6 +137,18 @@ function frame(ts) {
   requestAnimationFrame(frame);
 }
 
+// ---------- server-side running totals (to reconcile with the providers' consoles)
+async function refreshTotals() {
+  app.lastTotalsAt = performance.now();
+  try {
+    const h = await fetch("/api/health").then((r) => r.json());
+    app.health.totals = h.totals;
+    const t = h.totals; const since = new Date(t.since).toLocaleTimeString();
+    const fmt = (k) => `${t[k].calls} calls · ${t[k].input_tokens.toLocaleString()} in / ${t[k].output_tokens.toLocaleString()} out tokens · ${fmtUsd(t[k].cost)}`;
+    $("totals").innerHTML = `<b>Server totals since ${since}</b> (all tabs, all restarts; compare with the providers' consoles)<br>Jev: ${fmt("jev")}${h.llm ? `<br>LLM: ${fmt("llm")}` : ""}`;
+  } catch { /* ignore */ }
+}
+
 // ---------- UI rendering
 function updateModeBadge() {
   const b = $("modeBadge"); const h = app.health;
@@ -164,6 +176,7 @@ function updateStats() {
   rows.push(`<tr><td>cost / km driven</td>${cell((d) => (d.world.ego.y > 20 ? fmtUsd(d.stats.cost / (d.world.ego.y / 1000)) : "–"))}</tr>`);
   rows.push(`<tr><td>cost / hour driving</td>${cell((d) => fmtUsd(perHour(d)))}</tr>`);
   $("statsTable").innerHTML = rows.join("");
+  if (app.health.totals && (performance.now() - (app.lastTotalsAt || 0) > 5000)) refreshTotals();
   $("stTime").textContent = `${app.drivers[0] ? app.drivers[0].world.time.toFixed(0) : 0} s · ${app.course ? app.course.name : ""} · seed ${app.seed}`;
 }
 
