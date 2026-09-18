@@ -24,10 +24,14 @@ imminent impacts and can be switched off in the UI.
 
 ## Jev vs LLM, side by side
 
-With an OpenRouter key the page offers a **Compare** mode: two tracks with the same
-seed, the left car driven by Jev and the right one by an LLM (DeepSeek V4.1 Flash by
+With an OpenRouter key the page offers a **Compare** mode: two tracks on the same
+course, the left car driven by Jev and the right one by an LLM (DeepSeek V4.1 Flash by
 default) that receives the very same state and questions and must answer in the same
-JSON shape. Obstacles you click are placed on both tracks at the same distance ahead.
+JSON shape. The course (`public/js/course.js`) is generated once from the seed as a list
+of spawn events with absolute road positions; each event fires when that track's car
+passes its mark, so both cars meet the same cones, barriers, parked cars, traffic and
+pedestrians in the same places, each at its own pace. Obstacles you click are placed on
+both tracks at the same distance ahead.
 A live table shows, per driver: distance, average speed, decisions, latency, input and
 output tokens, cost so far, cost per decision and projected cost per hour of driving.
 Pricing: Jev $0.042 per million input tokens (output free); the LLM price is fetched
@@ -65,7 +69,8 @@ server.js            static hosting, /api/decide (Jev via @typesafe-ai/sdk), /ap
 public/js/brain.js   the four questions, fetch to /api/decide, local fallback, gating
 public/js/sensors.js perception → state JSON, swept-path reflex, ray casting
 public/js/car.js     ego vehicle: lane-centering + speed controller, bicycle model
-public/js/world.js   road, spawning, NPC cars, pedestrians, collisions
+public/js/course.js  deterministic spawn schedule shared by every track
+public/js/world.js   road, NPC cars, pedestrians, collisions
 public/js/render.js  canvas drawing
 public/js/main.js    game loop, decision loop, UI wiring
 scripts/headless.js  runs the sim in Node with the fallback brain (no browser)

@@ -1,6 +1,7 @@
 import { CONFIG, SIZES, ROAD_HALF_W, laneCenter, laneOf, clamp } from "./config.js";
 import { makeRng } from "./rng.js";
 import { EgoCar } from "./car.js";
+import { Course } from "./course.js";
 import { overlaps, corners, extentX, collides } from "./geometry.js";
 export { overlaps, corners, extentX, collides };
 
@@ -13,7 +14,7 @@ export function makeObject(type, x, y, extra = {}) {
 }
 
 export class World {
-  constructor(seed = Date.now() & 0xffffffff) {
+  constructor(seed = Date.now() >>> 0, course = null) {
     this.seed = seed;
     this.rng = makeRng(seed);
     this.ego = new EgoCar();
@@ -21,8 +22,8 @@ export class World {
     this.time = 0;
     this.crashed = null;         // {type, id} of the object hit
     this.autoTraffic = true;
-    this.density = 1.0;          // spawn rate multiplier
-    this.nextSpawnAt = 2.0;
+    this.course = course || new Course(seed);   // shared between worlds in comparison mode
+    this.courseIndex = 0;
     this.events = [];            // log lines for the UI
     // A friendly opening scene: a slow car ahead and a cone further up.
     this.add("car", laneCenter(1), 38, { speed: 6, cruise: 6 });
@@ -45,7 +46,7 @@ export class World {
       o.phase = extra.phase ?? "waiting";
       o.waitUntil = this.time + (extra.wait ?? this.rng.range(0.3, 1.8));
       o.walkSpeed = extra.walkSpeed ?? this.rng.range(1.1, 1.6);
-      o.color = this.rng.pick(["#ffd166", "#06d6a0", "#ef476f", "#118ab2"]);
+      o.color = extra.color || this.rng.pick(["#ffd166", "#06d6a0", "#ef476f", "#118ab2"]);
     }
     this.objects.push(o);
     return o;
@@ -75,46 +76,33 @@ export class World {
     return o;
   }
 
-  /** Random runtime spawn beyond the visible area. Returns false if the spot was busy. */
-  spawnRandom() {
-    const r = this.rng();
-    const ego = this.ego;
-    const yAhead = ego.y + this.rng.range(CONFIG.SPAWN_AHEAD_MIN, CONFIG.SPAWN_AHEAD_MAX);
-    const lane = this.rng.int(0, CONFIG.LANES - 1);
-    const free = (x, y, w, h) => !this.objects.some((o) => Math.abs(o.x - x) < (o.w + w) / 2 + 1 && Math.abs(o.y - y) < (o.h + h) / 2 + 9);
-    const isStatic = (o) => o.type === "cone" || o.type === "barrier" || o.type === "parked_car";
-    // Never let static obstacles close every lane within the same 30 m stretch.
-    const staticOk = (lane, y) => {
-      const others = [];
-      for (let i = 0; i < CONFIG.LANES; i++) if (i !== lane) others.push(i);
-      return others.some((i) => !this.objects.some((o) => isStatic(o) && laneOf(o.x) === i && Math.abs(o.y - y) < 30));
-    };
-    if (r < 0.32) {           // slow car ahead
-      if (!free(laneCenter(lane), yAhead, 2, 4.3)) return false;
-      this.add("car", laneCenter(lane), yAhead, { cruise: this.rng.range(3.5, 9) });
-    } else if (r < 0.44) {    // faster car coming from behind
-      const yBehind = ego.y - CONFIG.SPAWN_BEHIND;
-      if (!free(laneCenter(lane), yBehind, 2, 4.3)) return false;
-      this.add("car", laneCenter(lane), yBehind, { cruise: this.rng.range(11, 14) });
-    } else if (r < 0.52) {    // truck
-      if (!free(laneCenter(lane), yAhead, 2.4, 7.5)) return false;
-      this.add("truck", laneCenter(lane), yAhead, { cruise: this.rng.range(3, 6), color: "#6c7a89" });
-    } else if (r < 0.72) {    // pedestrian on a sidewalk, will cross
-      const side = this.rng.chance(0.5) ? -1 : 1;
-      const y = ego.y + this.rng.range(35, 60);
-      this.add("pedestrian", side * (ROAD_HALF_W + 1.2), y, { dir: -side, wait: this.rng.range(0.5, 3) });
-    } else if (r < 0.82) {
-      if (!free(laneCenter(lane), yAhead, 1, 1) || !staticOk(lane, yAhead)) return false;
-      this.add("cone", laneCenter(lane) + this.rng.range(-0.8, 0.8), yAhead);
-    } else if (r < 0.91) {
-      if (!free(laneCenter(lane), yAhead, 3.1, 0.8) || !staticOk(lane, yAhead)) return false;
-      this.add("barrier", laneCenter(lane), yAhead);
-    } else {
-      if (!free(laneCenter(lane), yAhead, 2, 4.3) || !staticOk(lane, yAhead)) return false;
-      this.add("parked_car", laneCenter(lane) + (lane === 0 ? -0.5 : lane === 2 ? 0.5 : 0), yAhead);
+  /** Spawn a course event at its absolute position (baseY + offset). Returns the object or null. */
+  spawnEvent(ev, baseY) {
+    const size = SIZES[ev.type] || SIZES.car;
+    let y = baseY + ev.offset;
+    const isStatic = (t) => t === "cone" || t === "barrier" || t === "parked_car";
+    const overlapsWith = (o, yy, margin) => Math.abs(o.x - ev.x) < (o.w + size.w) / 2 + 1 && Math.abs(o.y - yy) < (o.h + size.h) / 2 + margin;
+    if (isStatic(ev.type)) {
+      // Static obstacles land exactly where the course says (identical on every track); they only
+      // step aside from another static object or from the ego itself. NPC cars will brake for them.
+      const blocked = (yy) => this.objects.some((o) => isStatic(o.type) && overlapsWith(o, yy, 6)) || overlapsWith(this.ego, yy, 6);
+      let tries = 0;
+      while (blocked(y) && tries < 8) { y += 3; tries++; }
+      if (blocked(y)) return null;
+    } else if (ev.type !== "pedestrian") {
+      // Vehicles must not overlap anything: nudge forward until there is room.
+      const busy = (yy) => this.objects.some((o) => overlapsWith(o, yy, 9)) || overlapsWith(this.ego, yy, 9);
+      let tries = 0;
+      while (busy(y) && tries < 10) { y += 4; tries++; }
+      if (busy(y)) return null;
     }
-    return true;
+    if (ev.type === "car" || ev.type === "truck") return this.add(ev.type, ev.x, y, { cruise: ev.cruise, speed: ev.cruise, color: ev.color });
+    if (ev.type === "pedestrian") return this.add("pedestrian", ev.x, y, { dir: ev.dir, wait: ev.wait, walkSpeed: ev.walkSpeed, color: ev.color });
+    return this.add(ev.type, ev.x, y);
   }
+
+  /** Legacy helper: one random object relative to the ego (the UI's "Random object" button shares the event across worlds). */
+  spawnRandom() { return Boolean(this.spawnEvent(this.course.randomEvent(), this.ego.y)); }
 
   /** Nearest thing ahead of `v` overlapping its lane footprint (vehicles, obstacles, pedestrians, ego). */
   leadFor(v) {
@@ -214,10 +202,12 @@ export class World {
     this.objects = this.objects.filter((o) =>
       o.y > ego.y - CONFIG.DESPAWN_BEHIND && o.y < ego.y + CONFIG.DESPAWN_AHEAD && o.phase !== "done");
 
-    // --- Runtime spawning of dynamic objects.
-    if (this.autoTraffic && this.time >= this.nextSpawnAt) {
-      this.spawnRandom();
-      this.nextSpawnAt = this.time + this.rng.range(2.2, 4.5) / Math.max(0.2, this.density);
+    // --- Course events fire as the ego passes their marks (skipped, not queued, while auto traffic is off).
+    for (;;) {
+      const ev = this.course.get(this.courseIndex);
+      if (ev.triggerY > ego.y) break;
+      this.courseIndex++;
+      if (this.autoTraffic) this.spawnEvent(ev, ev.triggerY);
     }
 
     // --- Collision check for the ego car.

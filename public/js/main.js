@@ -1,5 +1,6 @@
 import { CONFIG } from "./config.js";
 import { World } from "./world.js";
+import { Course } from "./course.js";
 import { perceive } from "./sensors.js";
 import { Renderer } from "./render.js";
 import { QUESTIONS, askBrain, localDecide, gate } from "./brain.js";
@@ -16,6 +17,7 @@ const app = {
   running: true,
   tool: "cone",
   seed: Date.now() >>> 0,
+  course: null,            // one Course shared by every track: identical objects in identical places
   settings: { autoTraffic: true, density: 1, maxSpeedKmh: 45, reflex: true, rays: true },
 };
 
@@ -32,7 +34,8 @@ class Driver {
     return app.health.jev ? app.health.model : "local fallback";
   }
   reset(seed) {
-    this.world = new World(seed);
+    if (!app.course || app.course.seed !== seed) app.course = new Course(seed, app.settings.density);
+    this.world = new World(seed, app.course);
     this.applySettings();
     this.perception = null;
     this.last = { answers: null, intent: null, latency: null, state: null, source: null, error: null, reasoning: "" };
@@ -40,7 +43,7 @@ class Driver {
   }
   applySettings() {
     const s = app.settings;
-    this.world.autoTraffic = s.autoTraffic; this.world.density = s.density;
+    this.world.autoTraffic = s.autoTraffic; if (app.course) app.course.density = s.density;
     this.world.ego.maxSpeed = s.maxSpeedKmh / 3.6; this.world.ego.reflexEnabled = s.reflex;
     this.renderer.showRays = s.rays;
   }
@@ -201,6 +204,7 @@ function log(msg) {
 function restart() {
   const seedInput = $("seed").value.trim();
   app.seed = seedInput ? Number(seedInput) : (Date.now() >>> 0);
+  app.course = new Course(app.seed, app.settings.density);
   for (const d of app.drivers) d.reset(app.seed);
   $("log").innerHTML = "";
   app.running = true; $("pause").textContent = "Pause";
@@ -219,7 +223,11 @@ function setMode(mode) {
 function wireUi() {
   $("restart").onclick = restart;
   $("pause").onclick = () => { app.running = !app.running; $("pause").textContent = app.running ? "Pause" : "Resume"; };
-  $("spawn").onclick = () => { for (const d of app.drivers) for (let i = 0; i < 6 && !d.world.spawnRandom(); i++); log("spawned a random object"); };
+  $("spawn").onclick = () => {
+    const ev = app.course.randomEvent(); // same object, same distance ahead, on every track
+    for (const d of app.drivers) d.world.spawnEvent(ev, d.world.ego.y);
+    log(`spawned ${ev.type} ${Math.round(ev.offset)} m ${ev.offset < 0 ? "behind" : "ahead"}${app.drivers.length > 1 ? " (both tracks)" : ""}`);
+  };
   $("modeSingle").onchange = () => setMode("single");
   $("modeCompare").onchange = () => setMode("compare");
   const applyAll = () => app.drivers.forEach((d) => d.applySettings());
