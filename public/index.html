@@ -10,7 +10,16 @@
 <body>
   <main class="layout">
     <section class="stage">
-      <canvas id="sim" width="600" height="840" aria-label="2D driving simulation"></canvas>
+      <div class="tracks">
+        <div class="track" id="trackJev">
+          <div class="caption jev" id="captionJev">Jev</div>
+          <canvas id="simJev" width="600" height="840" aria-label="Track driven by Jev"></canvas>
+        </div>
+        <div class="track" id="trackLlm" hidden>
+          <div class="caption llm" id="captionLlm">LLM</div>
+          <canvas id="simLlm" width="600" height="840" aria-label="Track driven by an LLM"></canvas>
+        </div>
+      </div>
       <div class="toolbar">
         <div class="tools">
           <span class="muted">Click the road to add:</span>
@@ -32,6 +41,12 @@
         <p class="muted small">Every ~200 ms the car sends its perception state to <a href="https://docs.typesafe.ai" target="_blank" rel="noreferrer">TypeSafe Jev</a> and asks four typed questions. Jev decides, code drives.</p>
       </header>
 
+      <div class="modes">
+        <label><input type="radio" name="mode" id="modeSingle" checked> Jev only</label>
+        <label><input type="radio" name="mode" id="modeCompare"> Compare Jev vs LLM (DeepSeek via OpenRouter)</label>
+        <span id="modeHint" class="muted small"></span>
+      </div>
+
       <div class="controls">
         <button id="restart" class="primary">↻ Restart (R)</button>
         <button id="pause">Pause</button>
@@ -47,20 +62,15 @@
         <label><input type="checkbox" id="rays" checked> Show sensor rays</label>
       </div>
 
-      <div class="stats">
-        <div><span class="muted">distance</span><b id="stDist">0 m</b></div>
-        <div><span class="muted">time</span><b id="stTime">0 s</b></div>
-        <div><span class="muted">decisions</span><b id="stCalls">0</b></div>
-        <div><span class="muted">avg latency</span><b id="stLatency">0 ms</b></div>
-        <div><span class="muted">tokens</span><b id="stTokens">0</b></div>
-        <div><span class="muted">objects</span><b id="stObjects">0</b></div>
-      </div>
+      <h2>Live stats <span id="stTime" class="muted"></span></h2>
+      <table id="statsTable" class="statsTable"></table>
 
-      <h2>Jev answers</h2>
+      <h2>Answers</h2>
+      <div id="tabs" class="tabs"></div>
       <div id="decision" class="decision"><div class="muted">waiting for first decision…</div></div>
 
       <details>
-        <summary>Perception state sent to Jev</summary>
+        <summary>Perception state sent to the model</summary>
         <pre id="stateJson" class="json"></pre>
       </details>
       <details>

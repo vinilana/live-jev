@@ -4,23 +4,25 @@ import { World } from "../public/js/world.js";
 import { perceive } from "../public/js/sensors.js";
 import { localDecide, gate, QUESTIONS } from "../public/js/brain.js";
 
-// BRAIN=jev uses the running server (http://localhost:3000) for real Jev decisions.
-const useJev = process.env.BRAIN === "jev";
+// BRAIN=jev or BRAIN=llm uses the running server (http://localhost:3000) for real decisions.
+const brainKind = process.env.BRAIN || "local";
+const useJev = brainKind === "jev" || brainKind === "llm";
 const serverUrl = process.env.SERVER || "http://localhost:3000";
+let jevErrors = 0, tokIn = 0, tokOut = 0, cost = 0;
 async function decide(state) {
   if (!useJev) return { answers: localDecide(state), ms: 0 };
   const t0 = Date.now();
   try {
-    const r = await fetch(`${serverUrl}/api/decide`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ state, questions: QUESTIONS }) });
+    const r = await fetch(`${serverUrl}/api/${brainKind === "llm" ? "llm-decide" : "decide"}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ state, questions: QUESTIONS }) });
     const j = await r.json();
     if (!r.ok) throw new Error(j.error || r.status);
+    tokIn += j.usage?.input_tokens || 0; tokOut += j.usage?.output_tokens || 0; cost += j.cost || 0;
     return { answers: j.answers, ms: Date.now() - t0 };
   } catch (e) { // same policy as the browser: one failed call falls back to the local brain for that tick
     jevErrors++;
     return { answers: localDecide(state), ms: Date.now() - t0, error: e.message };
   }
 }
-let jevErrors = 0;
 
 const seconds = Number(process.argv[2] || 120);
 const seed = Number(process.argv[3] || 42);
@@ -39,7 +41,7 @@ while (world.time < seconds && !world.crashed) {
     counts[intent.speedAction] = (counts[intent.speedAction] || 0) + 1;
     if (intent.laneAction !== "keep_lane" && !world.ego.laneChanging) laneChanges++;
     world.ego.applyIntent(intent, world.time);
-    if (useJev && process.env.TRACE) trace.push(`  jev@${world.time.toFixed(1)}s ${ms}ms v=${Math.round(world.ego.speed * 3.6)} speed=${intent.speedAction}(jev:${answers.speed_action.choice}) lane=${intent.laneAction} hazard=${answers.hazard.score.toFixed(2)} ped=${answers.pedestrian_yield.noul.toFixed(2)} notes=${intent.notes.join("|")} cur=${JSON.stringify(p.state.lanes.current)} pedInPath=${JSON.stringify(p.state.pedestrian_in_path)}`);
+    if (useJev && process.env.TRACE) trace.push(`  ${brainKind}@${world.time.toFixed(1)}s ${ms}ms v=${Math.round(world.ego.speed * 3.6)} speed=${intent.speedAction}(jev:${answers.speed_action.choice}) lane=${intent.laneAction} hazard=${answers.hazard.score.toFixed(2)} ped=${answers.pedestrian_yield.noul.toFixed(2)} notes=${intent.notes.join("|")} cur=${JSON.stringify(p.state.lanes.current)} pedInPath=${JSON.stringify(p.state.pedestrian_in_path)}`);
     // emulate latency: the decision applies now, next one after `interval` (or the real round trip)
     decisions++; nextDecision = world.time + (useJev ? Math.max(0.2, ms / 1000) : interval);
   }
@@ -55,6 +57,6 @@ const avg = speeds.reduce((a, b) => a + b, 0) / speeds.length;
 console.log(JSON.stringify({
   seed, simSeconds: Math.round(world.time), crashed: world.crashed, distance_m: Math.round(world.ego.y),
   avg_kmh: Math.round(avg * 3.6), decisions, laneChanges, reflexTicks, minTtc, objects: world.objects.length,
-  speedActions: counts, brain: useJev ? `jev avg ${Math.round(jevMs / Math.max(1, decisions))}ms, ${jevErrors} errors` : "local",
+  speedActions: counts, brain: useJev ? `${brainKind} avg ${Math.round(jevMs / Math.max(1, decisions))}ms, ${jevErrors} errors, tokens ${tokIn}/${tokOut}, cost $${cost.toFixed(5)}` : "local",
 }));
 for (const e of world.events.slice(-8)) console.log(`  ${e.t.toFixed(1)}s ${e.msg}`);

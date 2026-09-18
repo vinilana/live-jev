@@ -58,10 +58,10 @@ export const QUESTIONS = {
   },
 };
 
-/** Ask the server (which calls Jev). Throws on any failure. */
-export async function askJev(state, signal) {
+/** Ask the server for a decision from `kind` ("jev" or "llm"). Throws on any failure. */
+export async function askBrain(kind, state, signal) {
   const t0 = performance.now();
-  const res = await fetch("/api/decide", {
+  const res = await fetch(kind === "llm" ? "/api/llm-decide" : "/api/decide", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ state, questions: QUESTIONS }),
@@ -75,6 +75,7 @@ export async function askJev(state, signal) {
   }
   return { ...body, roundTripMs: Math.round(performance.now() - t0) };
 }
+export const askJev = (state, signal) => askBrain("jev", state, signal);
 
 /**
  * Rule-based stand-in with the same answer shape, used when the server has no

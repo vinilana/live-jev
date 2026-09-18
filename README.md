@@ -22,11 +22,23 @@ brake harder than a slow one.
 A small "reflex" in code (emergency brake, blind-spot abort) exists only for
 imminent impacts and can be switched off in the UI.
 
+## Jev vs LLM, side by side
+
+With an OpenRouter key the page offers a **Compare** mode: two tracks with the same
+seed, the left car driven by Jev and the right one by an LLM (DeepSeek V4.1 Flash by
+default) that receives the very same state and questions and must answer in the same
+JSON shape. Obstacles you click are placed on both tracks at the same distance ahead.
+A live table shows, per driver: distance, average speed, decisions, latency, input and
+output tokens, cost so far, cost per decision and projected cost per hour of driving.
+Pricing: Jev $0.042 per million input tokens (output free); the LLM price is fetched
+from OpenRouter. Both can be overridden in `.env`.
+
 ## Run it
 
 ```sh
 npm install
-cp .env.example .env      # paste your key from https://console.typesafe.ai/settings/keys
+cp .env.example .env      # TYPESAFE_API_KEY from https://console.typesafe.ai/settings/keys
+                          # optional OPENROUTER_API_KEY for the comparison mode
 npm start                 # http://localhost:3000
 ```
 
@@ -49,7 +61,7 @@ so you can test the world before wiring Jev in. The key never reaches the browse
 ## Layout
 
 ```
-server.js            static hosting + /api/decide proxy (uses @typesafe-ai/sdk)
+server.js            static hosting, /api/decide (Jev via @typesafe-ai/sdk), /api/llm-decide (OpenRouter)
 public/js/brain.js   the four questions, fetch to /api/decide, local fallback, gating
 public/js/sensors.js perception → state JSON, swept-path reflex, ray casting
 public/js/car.js     ego vehicle: lane-centering + speed controller, bicycle model
@@ -62,7 +74,8 @@ scripts/headless.js  runs the sim in Node with the fallback brain (no browser)
 `node scripts/headless.js 150 42 500` simulates 150 s with seed 42 and a 500 ms
 decision interval and prints a summary; set `TRACE=1` to dump the last states.
 With the server running, `BRAIN=jev node scripts/headless.js 60 7` drives the same
-simulation with real Jev answers (`TRACE=1 TRACE_ACTION=slow_down` lists those decisions).
+simulation with real Jev answers and `BRAIN=llm` with the LLM (`TRACE=1 TRACE_ACTION=slow_down`
+lists those decisions); the summary includes tokens and cost.
 
 ## Tuning
 

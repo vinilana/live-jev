@@ -184,8 +184,9 @@ export class Renderer {
     ctx.fillText(`lane ${ego.lane}${ego.laneChanging ? " → " + ego.targetLane : ""}`, 24, 72);
     ctx.fillText(`${Math.round(ego.y)} m · ${world.time.toFixed(0)} s`, 24, 92);
     if (ui?.mode) {
-      ctx.textAlign = "right"; ctx.fillStyle = ui.mode === "jev" ? "#7ee787" : "#ffb020"; ctx.font = "bold 12px system-ui, sans-serif";
-      ctx.fillText(ui.mode === "jev" ? `JEV · ${ui.model || ""}` : "LOCAL FALLBACK", W - 14, 28);
+      ctx.textAlign = "right"; ctx.fillStyle = ui.mode === "jev" ? "#7ee787" : ui.mode === "llm" ? "#79b8ff" : "#ffb020"; ctx.font = "bold 12px system-ui, sans-serif";
+      const title = ui.mode === "jev" ? `JEV · ${ui.model || ""}` : ui.mode === "llm" ? `LLM · ${(ui.model || "").split("/").pop()}` : `${ui.label ? ui.label + " · " : ""}LOCAL FALLBACK`;
+      ctx.fillText(title, W - 14, 28);
       ctx.fillStyle = "#b7c0cc"; ctx.font = "12px system-ui, sans-serif";
       if (ui.latency != null) ctx.fillText(`${ui.latency} ms`, W - 14, 46);
     }
