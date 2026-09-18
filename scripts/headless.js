@@ -1,6 +1,7 @@
 // Headless run of the simulation with the local fallback brain (no browser, no Jev).
 // Usage: node scripts/headless.js [seconds] [seed] [decisionIntervalMs]
 import { World } from "../public/js/world.js";
+import { Course } from "../public/js/course.js";
 import { perceive } from "../public/js/sensors.js";
 import { localDecide, gate, QUESTIONS } from "../public/js/brain.js";
 
@@ -29,7 +30,8 @@ const seed = Number(process.argv[3] || 42);
 const interval = Number(process.argv[4] || 400) / 1000; // emulate Jev latency
 const dt = 1 / 60;
 
-const world = new World(seed);
+// COURSE=slalom|chicane|parked|gauntlet|squeeze|random_static|empty|traffic (default)
+const world = new World(seed, new Course(seed, 1, process.env.COURSE || "traffic"));
 let nextDecision = 0, decisions = 0, laneChanges = 0, reflexTicks = 0, minTtc = Infinity, jevMs = 0;
 const speeds = []; const trace = []; const counts = {};
 while (world.time < seconds && !world.crashed) {
@@ -55,7 +57,7 @@ while (world.time < seconds && !world.crashed) {
 if (process.env.TRACE) for (const t of (useJev ? trace.filter((t) => t.includes(`speed=${process.env.TRACE_ACTION || "stop"}`)).slice(0, Number(process.env.TRACE_N || 14)) : trace.slice(-6))) console.log(t);
 const avg = speeds.reduce((a, b) => a + b, 0) / speeds.length;
 console.log(JSON.stringify({
-  seed, simSeconds: Math.round(world.time), crashed: world.crashed, distance_m: Math.round(world.ego.y),
+  seed, course: world.course.presetId, simSeconds: Math.round(world.time), crashed: world.crashed, distance_m: Math.round(world.ego.y),
   avg_kmh: Math.round(avg * 3.6), decisions, laneChanges, reflexTicks, minTtc, objects: world.objects.length,
   speedActions: counts, brain: useJev ? `${brainKind} avg ${Math.round(jevMs / Math.max(1, decisions))}ms, ${jevErrors} errors, tokens ${tokIn}/${tokOut}, cost $${cost.toFixed(5)}` : "local",
 }));

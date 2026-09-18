@@ -55,9 +55,12 @@
       </div>
 
       <div class="settings">
-        <label><input type="checkbox" id="autoTraffic" checked> Auto traffic &amp; pedestrians</label>
-        <label>Density <input type="range" id="density" min="0.2" max="3" step="0.1" value="1"> <span id="densityVal">1×</span></label>
+        <label>Course <select id="course"></select></label>
+        <div id="courseInfo" class="muted small"></div>
+        <label><input type="checkbox" id="autoTraffic" checked> Spawn course objects (traffic / obstacles)</label>
+        <label>Density <input type="range" id="density" min="0.2" max="3" step="0.1" value="1"> <span id="densityVal">1×</span> <span class="muted small">(random courses only)</span></label>
         <label>Max speed <input type="range" id="maxSpeed" min="15" max="70" step="5" value="45"> <span id="maxSpeedVal">45 km/h</span></label>
+        <label title="Minimum time between two decisions. Raise it to compare both brains at the same cadence (cost per hour then reflects price per decision, not speed).">Decision interval <input type="range" id="decisionMs" min="200" max="2000" step="100" value="200"> <span id="decisionMsVal">200 ms</span></label>
         <label><input type="checkbox" id="reflex" checked> Safety reflex (emergency brake in code)</label>
         <label><input type="checkbox" id="rays" checked> Show sensor rays</label>
       </div>

@@ -1,6 +1,7 @@
 import { CONFIG } from "./config.js";
 import { World } from "./world.js";
 import { Course } from "./course.js";
+import { PRESETS } from "./presets.js";
 import { perceive } from "./sensors.js";
 import { Renderer } from "./render.js";
 import { QUESTIONS, askBrain, localDecide, gate } from "./brain.js";
@@ -18,7 +19,7 @@ const app = {
   tool: "cone",
   seed: Date.now() >>> 0,
   course: null,            // one Course shared by every track: identical objects in identical places
-  settings: { autoTraffic: true, density: 1, maxSpeedKmh: 45, reflex: true, rays: true },
+  settings: { autoTraffic: true, density: 1, maxSpeedKmh: 45, reflex: true, rays: true, course: "traffic", decisionMs: CONFIG.DECISION_MIN_INTERVAL_MS },
 };
 
 // ---------- a Driver = one world + one canvas + one brain
@@ -34,7 +35,7 @@ class Driver {
     return app.health.jev ? app.health.model : "local fallback";
   }
   reset(seed) {
-    if (!app.course || app.course.seed !== seed) app.course = new Course(seed, app.settings.density);
+    if (!app.course || app.course.seed !== seed || app.course.presetId !== app.settings.course) app.course = new Course(seed, app.settings.density, app.settings.course);
     this.world = new World(seed, app.course);
     this.applySettings();
     this.perception = null;
@@ -93,7 +94,7 @@ class Driver {
       st.cost += cost;
       this.last = { answers, intent, latency, state, source, error, reasoning };
       if (app.drivers[app.selected] === this) renderDecision();
-      await sleep(Math.max(0, CONFIG.DECISION_MIN_INTERVAL_MS - latency));
+      await sleep(Math.max(0, app.settings.decisionMs - latency));
     }
   }
 }
@@ -149,7 +150,8 @@ function updateStats() {
   const avgLat = (d) => d.stats.latencies.length ? Math.round(d.stats.latencies.reduce((a, b) => a + b, 0) / d.stats.latencies.length) : 0;
   const perDecision = (d) => (d.stats.calls ? d.stats.cost / d.stats.calls : 0);
   const perHour = (d) => (d.world.time > 5 ? d.stats.cost / d.world.time * 3600 : 0);
-  rows.push(`<tr><th></th>${app.drivers.map((d) => `<th class="${d.kind}">${d.label}<small>${d.modelName}</small></th>`).join("")}</tr>`);
+  const price = (d) => { const p = app.health.pricing?.[d.kind]; return p ? `$${p.input}/M in · $${p.output}/M out` : "price unknown"; };
+  rows.push(`<tr><th></th>${app.drivers.map((d) => `<th class="${d.kind}">${d.label}<small>${d.modelName}</small><small>${price(d)}</small></th>`).join("")}</tr>`);
   rows.push(`<tr><td>status</td>${cell((d) => d.world.crashed ? `<span class="bad">crashed (${d.world.crashed.type})</span>` : `<span class="good">driving</span>`)}</tr>`);
   rows.push(`<tr><td>distance</td>${cell((d) => `${Math.round(d.world.ego.y)} m`)}</tr>`);
   rows.push(`<tr><td>avg speed</td>${cell((d) => `${d.world.time > 1 ? Math.round(d.world.ego.y / d.world.time * 3.6) : 0} km/h`)}</tr>`);
@@ -159,9 +161,10 @@ function updateStats() {
   rows.push(`<tr><td>tokens out</td>${cell((d) => d.stats.tokensOut.toLocaleString())}</tr>`);
   rows.push(`<tr><td>cost so far</td>${cell((d) => `<b>${fmtUsd(d.stats.cost)}</b>`)}</tr>`);
   rows.push(`<tr><td>cost / decision</td>${cell((d) => fmtUsd(perDecision(d)))}</tr>`);
+  rows.push(`<tr><td>cost / km driven</td>${cell((d) => (d.world.ego.y > 20 ? fmtUsd(d.stats.cost / (d.world.ego.y / 1000)) : "–"))}</tr>`);
   rows.push(`<tr><td>cost / hour driving</td>${cell((d) => fmtUsd(perHour(d)))}</tr>`);
   $("statsTable").innerHTML = rows.join("");
-  $("stTime").textContent = `${app.drivers[0] ? app.drivers[0].world.time.toFixed(0) : 0} s · seed ${app.seed}`;
+  $("stTime").textContent = `${app.drivers[0] ? app.drivers[0].world.time.toFixed(0) : 0} s · ${app.course ? app.course.name : ""} · seed ${app.seed}`;
 }
 
 function bar(label, p, active) {
@@ -204,12 +207,12 @@ function log(msg) {
 function restart() {
   const seedInput = $("seed").value.trim();
   app.seed = seedInput ? Number(seedInput) : (Date.now() >>> 0);
-  app.course = new Course(app.seed, app.settings.density);
+  app.course = new Course(app.seed, app.settings.density, app.settings.course);
   for (const d of app.drivers) d.reset(app.seed);
   $("log").innerHTML = "";
   app.running = true; $("pause").textContent = "Pause";
   renderDecision();
-  log(`restarted (seed ${app.seed})${app.drivers.length > 1 ? " · both tracks use the same seed" : ""}`);
+  log(`restarted · course "${app.course.name}" · seed ${app.seed}${app.drivers.length > 1 ? " · both tracks share the course" : ""}`);
 }
 
 function setMode(mode) {
@@ -228,6 +231,12 @@ function wireUi() {
     for (const d of app.drivers) d.world.spawnEvent(ev, d.world.ego.y);
     log(`spawned ${ev.type} ${Math.round(ev.offset)} m ${ev.offset < 0 ? "behind" : "ahead"}${app.drivers.length > 1 ? " (both tracks)" : ""}`);
   };
+  const sel = $("course");
+  for (const [id, p] of Object.entries(PRESETS)) { const o = document.createElement("option"); o.value = id; o.textContent = p.name; sel.appendChild(o); }
+  sel.value = app.settings.course;
+  const showCourseInfo = () => { $("courseInfo").textContent = PRESETS[sel.value].description; };
+  showCourseInfo();
+  sel.onchange = () => { app.settings.course = sel.value; showCourseInfo(); restart(); };
   $("modeSingle").onchange = () => setMode("single");
   $("modeCompare").onchange = () => setMode("compare");
   const applyAll = () => app.drivers.forEach((d) => d.applySettings());
@@ -235,6 +244,7 @@ function wireUi() {
   $("density").oninput = (e) => { app.settings.density = Number(e.target.value); $("densityVal").textContent = `${e.target.value}×`; applyAll(); };
   $("maxSpeed").oninput = (e) => { app.settings.maxSpeedKmh = Number(e.target.value); $("maxSpeedVal").textContent = `${e.target.value} km/h`; applyAll(); };
   $("reflex").onchange = (e) => { app.settings.reflex = e.target.checked; applyAll(); };
+  $("decisionMs").oninput = (e) => { app.settings.decisionMs = Number(e.target.value); $("decisionMsVal").textContent = `${e.target.value} ms`; };
   $("rays").onchange = (e) => { app.settings.rays = e.target.checked; applyAll(); };
   document.querySelectorAll("[data-tool]").forEach((btn) => {
     btn.onclick = () => { app.tool = btn.dataset.tool; document.querySelectorAll("[data-tool]").forEach((b) => b.classList.toggle("active", b === btn)); };

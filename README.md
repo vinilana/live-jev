@@ -33,9 +33,21 @@ passes its mark, so both cars meet the same cones, barriers, parked cars, traffi
 pedestrians in the same places, each at its own pace. Obstacles you click are placed on
 both tracks at the same distance ahead.
 A live table shows, per driver: distance, average speed, decisions, latency, input and
-output tokens, cost so far, cost per decision and projected cost per hour of driving.
-Pricing: Jev $0.042 per million input tokens (output free); the LLM price is fetched
-from OpenRouter. Both can be overridden in `.env`.
+output tokens, cost so far, cost per decision, per km and projected cost per hour of driving.
+Pricing: Jev $42 per billion input tokens ($0.042/M, output free, as advertised on typesafe.ai);
+the LLM price is fetched from OpenRouter. Both can be overridden in `.env`. Because Jev
+answers faster it also decides more often; the "Decision interval" slider fixes the same
+cadence for both brains when you want cost per hour to reflect price per decision only.
+
+## Preset courses
+
+The **Course** selector offers, besides the seeded random traffic, static-obstacle-only
+courses (no traffic, no pedestrians) that force the models to steer: *Slalom* (cone pairs,
+open lane shifts one step every 32 m), *Chicane* (barriers, one step every 65 m), *Parked
+cars*, *Gauntlet* (mixed, spacing tightening from 50 m to 24 m), *Single-lane squeeze*
+(double lane changes, hard), *Random obstacles* and *Empty road*. Presets are defined in
+`public/js/presets.js` as repeating patterns with absolute positions, identical on both
+tracks. `COURSE=slalom node scripts/headless.js 120 1` runs one headlessly.
 
 ## Run it
 
@@ -70,6 +82,7 @@ public/js/brain.js   the four questions, fetch to /api/decide, local fallback, g
 public/js/sensors.js perception → state JSON, swept-path reflex, ray casting
 public/js/car.js     ego vehicle: lane-centering + speed controller, bicycle model
 public/js/course.js  deterministic spawn schedule shared by every track
+public/js/presets.js static-obstacle preset courses (slalom, chicane, ...)
 public/js/world.js   road, NPC cars, pedestrians, collisions
 public/js/render.js  canvas drawing
 public/js/main.js    game loop, decision loop, UI wiring

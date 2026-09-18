@@ -13,7 +13,9 @@ export const QUESTIONS = {
       "that lane has a positive `closing_speed_kmh` within ~15 m. Keep the lane when the current lane is clear, when " +
       "`lane_change_in_progress` is true, or when `seconds_since_lane_change` is below 3. Exception: if ego is stopped " +
       "behind something that is also stopped, a lane change into any lane with a few more meters of room is better than waiting " +
-      "(also via an adjacent lane toward an open `far_left` / `far_right` lane).",
+      "(also via an adjacent lane toward an open `far_left` / `far_right` lane). Plan double lane changes early: if the " +
+      "current lane AND the adjacent lane are both blocked ahead but `far_left` / `far_right` is open, start moving toward " +
+      "the open side now, one lane at a time, while there is still room to stop in the intermediate lane.",
     criteria: {
       keep_lane: "Stay in the current lane; it is clear enough, or no adjacent lane is safer.",
       change_left: "Move one lane to the left: the left lane exists, is clear ahead and no car is closing from behind, and the current lane is blocked or slower.",
@@ -91,6 +93,16 @@ export function localDecide(state) {
 
   let lane = "keep_lane";
   const blocked = cur.blocked_by && (cur.clear_ahead_m < Math.max(2.2 * stop, 18) || (cur.blocked_by.moving && cur.blocked_by.speed_kmh < ego.max_speed_kmh - 12 && cur.clear_ahead_m < 30));
+  // Early planning for a double lane change: current + adjacent blocked by static things, far lane open.
+  const staticAhead = (L) => L && L !== "does_not_exist" && L.blocked_by && !L.blocked_by.moving;
+  const planFar = (L, F) => staticAhead(L) && F && F !== "does_not_exist" && !L.alongside &&
+    F.clear_ahead_m > Math.max(L.clear_ahead_m, cur.clear_ahead_m) + 15 && L.clear_ahead_m > stop * 1.2 + 6 &&
+    !(L.vehicle_behind && L.vehicle_behind.closing_speed_kmh > 0 && L.vehicle_behind.distance_m < 12);
+  const planAhead = staticAhead(cur) && cur.clear_ahead_m < 3 * stop + 30;
+  if (planAhead && !blocked && !ego.lane_change_in_progress && ego.seconds_since_lane_change > 2.5) {
+    if (ego.can_change_left && planFar(lanes.left, lanes.far_left)) lane = "change_left";
+    else if (ego.can_change_right && planFar(lanes.right, lanes.far_right)) lane = "change_right";
+  }
   if (blocked && !ego.lane_change_in_progress && ego.seconds_since_lane_change > 2.5) {
     if (ego.can_change_left && laneOk(lanes.left)) lane = "change_left";
     else if (ego.can_change_right && laneOk(lanes.right)) lane = "change_right";

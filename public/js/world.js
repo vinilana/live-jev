@@ -25,9 +25,7 @@ export class World {
     this.course = course || new Course(seed);   // shared between worlds in comparison mode
     this.courseIndex = 0;
     this.events = [];            // log lines for the UI
-    // A friendly opening scene: a slow car ahead and a cone further up.
-    this.add("car", laneCenter(1), 38, { speed: 6, cruise: 6 });
-    this.add("cone", laneCenter(2) + 0.3, 60);
+    for (const ev of this.course.opening) this.spawnEvent(ev, 0);
   }
 
   log(msg) { this.events.push({ t: this.time, msg }); if (this.events.length > 200) this.events.shift(); }
@@ -207,7 +205,7 @@ export class World {
       const ev = this.course.get(this.courseIndex);
       if (ev.triggerY > ego.y) break;
       this.courseIndex++;
-      if (this.autoTraffic) this.spawnEvent(ev, ev.triggerY);
+      if (this.autoTraffic && ev.type !== "none") this.spawnEvent(ev, ev.triggerY);
     }
 
     // --- Collision check for the ego car.
