@@ -10,6 +10,7 @@ export class Renderer {
     this.ctx = canvas.getBoundingClientRect ? canvas.getContext("2d") : null;
     canvas.width = W; canvas.height = H;
     this.showRays = true;
+    this.showAnswers = true;
     this.ghost = null; // {type, x, y} for placement preview
   }
 
@@ -27,6 +28,7 @@ export class Renderer {
     if (this.showRays && perception) this.drawRays(ctx, perception.rays, ego.y, ego);
     this.drawEgo(ctx, ego, ui);
     this.drawHud(ctx, world, perception, ui);
+    if (this.showAnswers && ui?.last?.answers) this.drawAnswers(ctx, ui.last, ui.questions);
     if (world.crashed) this.drawCrash(ctx, world.crashed);
     ctx.restore();
   }
@@ -177,12 +179,36 @@ export class Renderer {
   drawHud(ctx, world, perception, ui) {
     const ego = world.ego;
     ctx.save();
-    ctx.fillStyle = "rgba(10,12,16,0.7)"; roundRect(ctx, 12, 12, 150, 92, 8); ctx.fill();
+    ctx.fillStyle = "rgba(10,12,16,0.78)"; roundRect(ctx, 12, 12, 200, 118, 8); ctx.fill();
     ctx.fillStyle = "#fff"; ctx.font = "bold 30px system-ui, sans-serif"; ctx.textAlign = "left";
     ctx.fillText(`${Math.abs(Math.round(ego.speed * 3.6))}`, 24, 50);
     ctx.font = "12px system-ui, sans-serif"; ctx.fillStyle = "#b7c0cc"; ctx.fillText("km/h", 90, 50);
-    ctx.fillText(`lane ${ego.lane}${ego.laneChanging ? " → " + ego.targetLane : ""}`, 24, 72);
-    ctx.fillText(`${Math.round(ego.y)} m · ${world.time.toFixed(0)} s`, 24, 92);
+    ctx.textAlign = "right"; ctx.fillText(`lane ${ego.lane}${ego.laneChanging ? " → " + ego.targetLane : ""}`, 200, 50); ctx.textAlign = "left";
+    // distance travelled, prominent
+    ctx.fillStyle = "#7ee787"; ctx.font = "bold 11px system-ui, sans-serif"; ctx.fillText("DISTANCE", 24, 72);
+    ctx.fillStyle = "#fff"; ctx.font = "bold 26px system-ui, sans-serif"; ctx.fillText(`${Math.round(ego.y).toLocaleString()} m`, 24, 100);
+    ctx.font = "12px system-ui, sans-serif"; ctx.fillStyle = "#b7c0cc"; ctx.textAlign = "right";
+    ctx.fillText(`${(ego.y / 1000).toFixed(2)} km · ${world.time.toFixed(0)} s`, 200, 100); ctx.textAlign = "left";
+    ctx.fillText(`avg ${world.time > 1 ? Math.round(ego.y / world.time * 3.6) : 0} km/h`, 24, 120);
+
+    // Cost panel right under the speedometer: so far, per km, per metre.
+    if (ui?.cost) {
+      const c = ui.cost;
+      const usd = (v, digits) => { if (!(v > 0)) return "$0"; const d = digits ?? (v >= 1 ? 2 : v >= 0.01 ? 4 : v >= 0.0001 ? 6 : 8); return `$${v.toFixed(d).replace(/0+$/, "").replace(/\.$/, "")}`; };
+      const top = 138;
+      ctx.fillStyle = "rgba(10,12,16,0.78)"; roundRect(ctx, 12, top, 200, 112, 8); ctx.fill();
+      ctx.strokeStyle = "rgba(255,200,80,0.55)"; ctx.lineWidth = 1.5; roundRect(ctx, 12, top, 200, 112, 8); ctx.stroke();
+      ctx.textAlign = "left";
+      ctx.fillStyle = "#ffd166"; ctx.font = "bold 11px system-ui, sans-serif"; ctx.fillText("COST SO FAR", 24, top + 18);
+      ctx.fillStyle = "#fff"; ctx.font = "bold 24px system-ui, sans-serif"; ctx.fillText(usd(c.soFar), 24, top + 44);
+      ctx.font = "12px system-ui, sans-serif"; ctx.fillStyle = "#b7c0cc";
+      ctx.fillText("per km", 24, top + 68); ctx.fillText("per metre", 24, top + 86); ctx.fillText("per decision", 24, top + 104);
+      ctx.textAlign = "right"; ctx.fillStyle = "#ffd166"; ctx.font = "bold 13px system-ui, sans-serif";
+      ctx.fillText(c.perKm != null ? usd(c.perKm) : "–", 200, top + 68);
+      ctx.fillText(c.perM != null ? usd(c.perM) : "–", 200, top + 86);
+      ctx.fillText(c.perDecision != null ? usd(c.perDecision) : "–", 200, top + 104);
+      ctx.textAlign = "left";
+    }
     if (ui?.mode) {
       ctx.textAlign = "right"; ctx.fillStyle = ui.mode === "jev" ? "#7ee787" : ui.mode === "llm" ? "#79b8ff" : "#ffb020"; ctx.font = "bold 12px system-ui, sans-serif";
       const title = ui.mode === "jev" ? `JEV · ${ui.model || ""}` : ui.mode === "llm" ? `LLM · ${(ui.model || "").split("/").pop()}` : `${ui.label ? ui.label + " · " : ""}LOCAL FALLBACK`;
@@ -195,6 +221,45 @@ export class Renderer {
     ctx.restore();
   }
 
+  /** The model's answers as an overlay on the right side of the track. */
+  drawAnswers(ctx, last, questions) {
+    const { answers, intent, latency, source, reasoning } = last;
+    const boxW = 208, x0 = W - 14 - boxW, pad = 8;
+    const rows = [];
+    const q = (title, meta) => rows.push({ h: 16, draw: (y) => { ctx.fillStyle = "#fff"; ctx.font = "bold 11px system-ui, sans-serif"; ctx.textAlign = "left"; ctx.fillText(title, x0 + pad, y + 11); ctx.fillStyle = "#8e98a6"; ctx.font = "10px system-ui, sans-serif"; ctx.textAlign = "right"; ctx.fillText(meta, x0 + boxW - pad, y + 11); } });
+    const bar = (label, p, active) => rows.push({ h: 13, draw: (y) => {
+      const lx = x0 + pad, tx = x0 + 78, tw = boxW - 78 - 40, px = x0 + boxW - pad;
+      ctx.font = `${active ? "bold " : ""}10px system-ui, sans-serif`; ctx.fillStyle = active ? "#fff" : "#8e98a6"; ctx.textAlign = "left"; ctx.fillText(label, lx, y + 10);
+      ctx.fillStyle = "#222831"; ctx.fillRect(tx, y + 3, tw, 7);
+      ctx.fillStyle = active ? "#2f7cf6" : "#4b5563"; ctx.fillRect(tx, y + 3, tw * Math.max(0, Math.min(1, p)), 7);
+      ctx.textAlign = "right"; ctx.fillStyle = active ? "#fff" : "#8e98a6"; ctx.fillText(`${Math.round(p * 100)}%`, px, y + 10);
+    } });
+    const text = (str, color, bold) => { for (const line of wrap(ctx, str, boxW - 2 * pad, `${bold ? "bold " : ""}10px system-ui, sans-serif`)) rows.push({ h: 12, draw: (y) => { ctx.font = `${bold ? "bold " : ""}10px system-ui, sans-serif`; ctx.fillStyle = color; ctx.textAlign = "left"; ctx.fillText(line, x0 + pad, y + 10); } }); };
+
+    const la = answers.lane_action, sa = answers.speed_action, hz = answers.hazard, py = answers.pedestrian_yield;
+    rows.push({ h: 18, draw: (y) => { ctx.fillStyle = source === "local" ? "#ffb020" : source === "llm" ? "#79b8ff" : "#7ee787"; ctx.font = "bold 11px system-ui, sans-serif"; ctx.textAlign = "left"; ctx.fillText(`ANSWERS · ${source.toUpperCase()}`, x0 + pad, y + 12); ctx.fillStyle = "#8e98a6"; ctx.font = "10px system-ui, sans-serif"; ctx.textAlign = "right"; ctx.fillText(`${latency} ms`, x0 + boxW - pad, y + 12); } });
+    q("lane_action", `conf ${la.confidence.toFixed(2)}`);
+    for (const k of Object.keys(questions.lane_action.criteria)) bar(k, la.probabilities[k] ?? 0, k === la.choice);
+    q("speed_action", `conf ${sa.confidence.toFixed(2)}`);
+    for (const k of Object.keys(questions.speed_action.criteria)) bar(k, sa.probabilities[k] ?? 0, k === sa.choice);
+    q("hazard", `score ${hz.score.toFixed(2)} / 3`);
+    ["none", "low", "moderate", "severe"].forEach((k, i) => bar(k, hz.probabilities[i] ?? 0, Math.round(hz.score) === i));
+    q("pedestrian_yield", "noul");
+    bar("yes", py.noul, py.noul >= 0.6);
+    rows.push({ h: 4, draw: () => {} });
+    text(`→ ${intent.laneAction} + ${intent.speedAction}`, "#fff", true);
+    for (const n of intent.notes) text(`⚑ ${n}`, "#ffb020");
+    if (reasoning) text(`💭 ${reasoning}`, "#79b8ff");
+
+    const boxH = rows.reduce((a, r) => a + r.h, 0) + pad * 2;
+    let y = 52;
+    ctx.save();
+    ctx.fillStyle = "rgba(10,12,16,0.82)"; roundRect(ctx, x0, y, boxW, boxH, 8); ctx.fill();
+    y += pad;
+    for (const r of rows) { r.draw(y); y += r.h; }
+    ctx.restore();
+  }
+
   drawCrash(ctx, crashed) {
     ctx.save();
     ctx.fillStyle = "rgba(120,0,0,0.45)"; ctx.fillRect(0, 0, W, H);
@@ -204,6 +269,13 @@ export class Renderer {
     ctx.fillText(`into ${crashed.type.replace("_", " ")} · press R or Restart`, W / 2, H / 2 + 12);
     ctx.restore();
   }
+}
+
+function wrap(ctx, str, maxW, font) {
+  ctx.font = font; const words = String(str).split(" "); const lines = []; let cur = "";
+  for (const w of words) { const t = cur ? cur + " " + w : w; if (ctx.measureText(t).width > maxW && cur) { lines.push(cur); cur = w; } else cur = t; }
+  if (cur) lines.push(cur);
+  return lines.slice(0, 4);
 }
 
 function roundRect(ctx, x, y, w, h, r) {

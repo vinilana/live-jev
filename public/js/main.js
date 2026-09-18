@@ -19,7 +19,7 @@ const app = {
   tool: "cone",
   seed: Date.now() >>> 0,
   course: null,            // one Course shared by every track: identical objects in identical places
-  settings: { autoTraffic: true, density: 1, maxSpeedKmh: 45, reflex: true, rays: true, course: "traffic", decisionMs: CONFIG.DECISION_MIN_INTERVAL_MS },
+  settings: { autoTraffic: true, density: 1, maxSpeedKmh: 45, reflex: true, rays: true, answers: true, course: "traffic", decisionMs: CONFIG.DECISION_MIN_INTERVAL_MS },
 };
 
 // ---------- a Driver = one world + one canvas + one brain
@@ -46,7 +46,7 @@ class Driver {
     const s = app.settings;
     this.world.autoTraffic = s.autoTraffic; if (app.course) app.course.density = s.density;
     this.world.ego.maxSpeed = s.maxSpeedKmh / 3.6; this.world.ego.reflexEnabled = s.reflex;
-    this.renderer.showRays = s.rays;
+    this.renderer.showRays = s.rays; this.renderer.showAnswers = s.answers;
   }
   frame(dt) {
     const world = this.world;
@@ -60,6 +60,13 @@ class Driver {
       mode: this.kind === "llm" ? (app.health.llm ? "llm" : "local") : (app.health.jev ? "jev" : "local"),
       model: this.modelName, label: this.label, latency: this.last.latency, paused: !app.running,
       hazard: this.last.answers ? this.last.answers.hazard.score : 0,
+      last: this.last, questions: QUESTIONS,
+      cost: {
+        soFar: this.stats.cost,
+        perKm: world.ego.y > 20 ? this.stats.cost / (world.ego.y / 1000) : null,
+        perM: world.ego.y > 20 ? this.stats.cost / world.ego.y : null,
+        perDecision: this.stats.calls ? this.stats.cost / this.stats.calls : null,
+      },
     });
   }
   /** Decision loop: one request in flight at a time, per driver. */
@@ -192,20 +199,7 @@ function renderTabs() {
 
 function renderDecision() {
   const d = app.drivers[app.selected]; if (!d) return;
-  const { answers, intent, latency, state, source, error, reasoning } = d.last;
-  if (!answers) { $("decision").innerHTML = `<div class="muted">waiting for first decision…</div>`; return; }
-  const la = answers.lane_action, sa = answers.speed_action, hz = answers.hazard, py = answers.pedestrian_yield;
-  const src = source === "local" ? `<span class="tag warn">local</span>` : `<span class="tag ok">${source}</span>`;
-  $("decision").innerHTML = `
-    <div class="qrow"><div class="qhead">${src} <b>lane_action</b> <span class="muted">choice · conf ${la.confidence.toFixed(2)} · ${latency} ms</span></div>
-      ${Object.keys(QUESTIONS.lane_action.criteria).map((k) => bar(k, la.probabilities[k] ?? 0, k === la.choice)).join("")}</div>
-    <div class="qrow"><div class="qhead"><b>speed_action</b> <span class="muted">choice · conf ${sa.confidence.toFixed(2)}</span></div>
-      ${Object.keys(QUESTIONS.speed_action.criteria).map((k) => bar(k, sa.probabilities[k] ?? 0, k === sa.choice)).join("")}</div>
-    <div class="qrow"><div class="qhead"><b>hazard</b> <span class="muted">score ${hz.score.toFixed(2)} / 3 · conf ${hz.confidence.toFixed(2)}</span></div>
-      ${[0, 1, 2, 3].map((k) => bar(["none", "low", "moderate", "severe"][k], hz.probabilities[k] ?? 0, Math.round(hz.score) === k)).join("")}</div>
-    <div class="qrow"><div class="qhead"><b>pedestrian_yield</b> <span class="muted">noul</span></div>${bar("yes", py.noul, py.noul >= CONFIG.PED_YIELD_THRESHOLD)}</div>
-    <div class="intent">→ executing <b>${intent.laneAction}</b> + <b>${intent.speedAction}</b>${intent.notes.length ? `<div class="notes">${intent.notes.map((n) => "⚑ " + n).join("<br>")}</div>` : ""}${reasoning ? `<div class="reasoning">💭 ${reasoning}</div>` : ""}${error ? `<div class="err">${error}</div>` : ""}</div>`;
-  $("stateJson").textContent = JSON.stringify(state, null, 1);
+  $("stateJson").textContent = d.last.state ? JSON.stringify(d.last.state, null, 1) : "waiting for first decision…";
 }
 
 function log(msg) {
@@ -259,6 +253,7 @@ function wireUi() {
   $("reflex").onchange = (e) => { app.settings.reflex = e.target.checked; applyAll(); };
   $("decisionMs").oninput = (e) => { app.settings.decisionMs = Number(e.target.value); $("decisionMsVal").textContent = `${e.target.value} ms`; };
   $("rays").onchange = (e) => { app.settings.rays = e.target.checked; applyAll(); };
+  $("answers").onchange = (e) => { app.settings.answers = e.target.checked; applyAll(); };
   document.querySelectorAll("[data-tool]").forEach((btn) => {
     btn.onclick = () => { app.tool = btn.dataset.tool; document.querySelectorAll("[data-tool]").forEach((b) => b.classList.toggle("active", b === btn)); };
   });
