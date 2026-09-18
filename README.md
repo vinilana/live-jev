@@ -1,0 +1,71 @@
+# Jev Self-Driving Sim
+
+A 2D, top-down autonomous car that runs in the browser and uses
+[TypeSafe's Jev](https://docs.typesafe.ai/introduction) (a "System One" decision model)
+as its driving classifier. Every ~200 ms the car turns what its sensors see into a JSON
+state, sends it to Jev with four typed questions, and executes the answers:
+
+| question           | type   | what Jev decides                                  |
+|--------------------|--------|---------------------------------------------------|
+| `lane_action`      | choice | `keep_lane` / `change_left` / `change_right`      |
+| `speed_action`     | choice | `stop` / `slow_down` / `hold` / `speed_up`        |
+| `hazard`           | score  | 0 (clear) … 3 (collision likely within seconds)   |
+| `pedestrian_yield` | noul   | probability that ego must stop for a pedestrian   |
+
+All four go in a single API call (speculative fan-out). Code then applies
+confidence-gated routing: a low-confidence lane change is ignored, a strong
+`pedestrian_yield` overrides speed, a severe `hazard` forces at least `slow_down`,
+and a `stop` is softened to `slow_down` when nothing is within 1.5× the stopping
+distance (so far-away pedestrians or obstacles cause a gentle slowdown, not a halt).
+Speed steps are scaled by the time since the previous answer, so a fast Jev does not
+brake harder than a slow one.
+A small "reflex" in code (emergency brake, blind-spot abort) exists only for
+imminent impacts and can be switched off in the UI.
+
+## Run it
+
+```sh
+npm install
+cp .env.example .env      # paste your key from https://console.typesafe.ai/settings/keys
+npm start                 # http://localhost:3000
+```
+
+Without a key the app still runs, with a clearly labelled rule-based fallback brain,
+so you can test the world before wiring Jev in. The key never reaches the browser:
+`server.js` proxies `/api/decide` to the TypeSafe API with the official SDK
+(the API also rejects browser origins, so a proxy is required anyway).
+
+## Using the simulator
+
+* **Click the road** to add objects at runtime: cone, barrier, parked car, traffic car,
+  truck, pedestrian, or remove (keys 1–7 select the tool).
+* **Auto traffic** keeps spawning slow cars ahead, faster cars from behind, trucks,
+  pedestrians that cross the street, and static obstacles. Density is adjustable.
+* **Restart** (R) resets the world. Enter a seed to replay the same scenario.
+* The right panel shows every Jev answer with its probabilities, confidence,
+  latency, the gating notes, the exact state JSON sent, and the questions.
+* Space pauses.
+
+## Layout
+
+```
+server.js            static hosting + /api/decide proxy (uses @typesafe-ai/sdk)
+public/js/brain.js   the four questions, fetch to /api/decide, local fallback, gating
+public/js/sensors.js perception → state JSON, swept-path reflex, ray casting
+public/js/car.js     ego vehicle: lane-centering + speed controller, bicycle model
+public/js/world.js   road, spawning, NPC cars, pedestrians, collisions
+public/js/render.js  canvas drawing
+public/js/main.js    game loop, decision loop, UI wiring
+scripts/headless.js  runs the sim in Node with the fallback brain (no browser)
+```
+
+`node scripts/headless.js 150 42 500` simulates 150 s with seed 42 and a 500 ms
+decision interval and prints a summary; set `TRACE=1` to dump the last states.
+With the server running, `BRAIN=jev node scripts/headless.js 60 7` drives the same
+simulation with real Jev answers (`TRACE=1 TRACE_ACTION=slow_down` lists those decisions).
+
+## Tuning
+
+Constants live in `public/js/config.js` (speeds, sensor range, decision interval,
+confidence thresholds). Question wording lives in `public/js/brain.js`; the state
+schema Jev sees is built in `public/js/sensors.js`.

@@ -1,0 +1,48 @@
+:root {
+  --bg: #0f1216; --panel: #171b21; --line: #262c35; --text: #e6e9ee; --muted: #8e98a6;
+  --ok: #3fb950; --warn: #d29922; --accent: #2f7cf6; --err: #f85149;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font: 14px/1.4 system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+a { color: #79b8ff; }
+.layout { display: grid; grid-template-columns: minmax(320px, 600px) minmax(340px, 1fr); gap: 16px; padding: 16px; max-width: 1400px; margin: 0 auto; min-height: 100vh; }
+.stage { display: flex; flex-direction: column; gap: 10px; }
+canvas { width: 100%; height: auto; border-radius: 12px; box-shadow: 0 10px 40px rgba(0,0,0,0.5); cursor: crosshair; background: #1f2a1f; }
+.toolbar .tools { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+button { background: #222831; color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 7px 10px; cursor: pointer; font: inherit; }
+button:hover { border-color: #3a4352; }
+button.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.panel h1 { font-size: 20px; margin: 0 0 6px; }
+.panel h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 8px 0 0; }
+.badge { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+.badge.ok { background: rgba(63,185,80,.15); color: var(--ok); border: 1px solid rgba(63,185,80,.4); }
+.badge.warn { background: rgba(210,153,34,.15); color: var(--warn); border: 1px solid rgba(210,153,34,.4); }
+.muted { color: var(--muted); } .small { font-size: 12px; margin: 8px 0 0; }
+.controls { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.controls .inline input { width: 90px; background: #0f1216; color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 5px 8px; font: inherit; }
+.settings { display: grid; gap: 6px; font-size: 13px; }
+.settings label { display: flex; align-items: center; gap: 8px; }
+.settings input[type=range] { flex: 1; }
+.stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.stats div { background: #0f1216; border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; display: flex; flex-direction: column; font-size: 12px; }
+.stats b { font-size: 15px; }
+.decision { display: grid; gap: 10px; }
+.qrow { background: #0f1216; border: 1px solid var(--line); border-radius: 8px; padding: 8px; }
+.qhead { margin-bottom: 4px; font-size: 13px; }
+.bar { display: grid; grid-template-columns: 110px 1fr 40px; gap: 8px; align-items: center; font-size: 12px; color: var(--muted); }
+.bar.active { color: var(--text); font-weight: 600; }
+.bar .track { height: 8px; background: #222831; border-radius: 4px; overflow: hidden; }
+.bar .fill { display: block; height: 100%; background: #4b5563; transition: width .15s; }
+.bar.active .fill { background: var(--accent); }
+.bar .pct { text-align: right; font-variant-numeric: tabular-nums; }
+.tag { font-size: 10px; padding: 1px 6px; border-radius: 4px; text-transform: uppercase; font-weight: 700; margin-right: 4px; }
+.tag.ok { background: rgba(63,185,80,.2); color: var(--ok); } .tag.warn { background: rgba(210,153,34,.2); color: var(--warn); }
+.intent { font-size: 13px; padding: 6px 8px; border-left: 3px solid var(--accent); }
+.notes { color: var(--warn); font-size: 12px; margin-top: 4px; }
+.err { color: var(--err); font-size: 12px; margin-top: 4px; }
+details summary { cursor: pointer; color: var(--muted); font-size: 13px; }
+pre.json { background: #0f1216; border: 1px solid var(--line); border-radius: 8px; padding: 8px; font-size: 11px; max-height: 320px; overflow: auto; white-space: pre-wrap; margin: 6px 0 0; }
+.log { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; color: var(--muted); max-height: 180px; overflow: auto; background: #0f1216; border: 1px solid var(--line); border-radius: 8px; padding: 8px; white-space: pre-wrap; }
+@media (max-width: 900px) { .layout { grid-template-columns: 1fr; } }
